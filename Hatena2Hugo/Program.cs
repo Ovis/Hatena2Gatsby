@@ -39,11 +39,18 @@ namespace Hatena2Hugo
             await Host.CreateDefaultBuilder().RunConsoleAppFrameworkAsync<Program>(args);
         }
 
+        [Command("version", "display version")]
+        public void Getversion()
+        {
+            Console.WriteLine($"GetType().Assembly: { GetType().Assembly.GetName() }");
+        }
+
         // allows void/Task return type, parameter is automatically binded from string[] args.
         public async Task RunAsync(
             [Option("s", "Source file")] string src,
             [Option("d", "Destination folder")] string dest,
-            [Option("f", "Download image iles from fotolife.")] string fotolife = "true")
+            [Option("f", "Download image iles from fotolife")] string fotolife = "true",
+            [Option("t", "Default title")] string defaultTitle = "No title")
         {
             var running = true;
 
@@ -64,6 +71,12 @@ namespace Hatena2Hugo
             bool multi_line = false;
             string key = string.Empty;
             string value = string.Empty;
+
+            Console.WriteLine(
+                $"start parsing: {src} ( cancel for Ctrl+C ) \n" +
+                $"fotolife: { fotolife }\n" +
+                $"default title: { defaultTitle }\n"
+            );
 
             foreach (var line in File.ReadLines(src))
             {
@@ -108,7 +121,7 @@ namespace Hatena2Hugo
                         switch (key)
                         {
                             case "AUTHOR": entry.Author = value; break;
-                            case "TITLE": entry.Title = string.IsNullOrWhiteSpace(value) ? "Not Title" : value; break;
+                            case "TITLE": entry.Title = string.IsNullOrWhiteSpace(value) ? defaultTitle : value; break;
                             case "STATUS": entry.Status = value; break;
                             case "BASENAME": entry.BaseName = value; break;
                             case "ALLOW COMMENTS": entry.AllowComment = value; break;
@@ -156,28 +169,29 @@ namespace Hatena2Hugo
                 try
                 {
                     var dir = Path.Combine(dest, e.BaseName);
-                    
-                    Console.WriteLine($"Output: {dir}");
 
                     if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
 
                     var file = Path.Combine(dir, "index.md");
 
-                    var content = new List<string>();
-
-                    content.Add($"---");
-                    content.Add($"date: {DateTime.Parse(e.Date):o}");
-                    content.Add($"draft: {(e.Status != "Publish").ToString().ToLower()}");
-                    content.Add($"title: \"{e.Title}\"");
-                    content.Add($"tags: [" + string.Join(", ", e.Category.Select(_ => $"\"{_}\"")) + "]");
-                    content.Add($"eyecatch: {e.Image}");
-                    content.Add($"---");
+                    var content = new List<string>
+                    {
+                        $"---",
+                        $"date: {DateTime.Parse(e.Date):o}",
+                        $"draft: {(e.Status != "Publish").ToString().ToLower()}",
+                        $"title: \"{e.Title}\"",
+                        $"tags: [" + string.Join(", ", e.Category.Select(_ => $"\"{_}\"")) + "]",
+                        $"eyecatch: {e.Image}",
+                        $"---"
+                    };
                     content.AddRange(e.Body);
+                    content.Add("***"); // Insert <hr />
                     content.AddRange(e.ExtendedBody);
 
                     var text = string.Join("\n", content);
+                    var image_count = 0;
 
-                    if (fotolife.ToLower() != "false")
+                    if (fotolife.ToLower() == "true")
                     {
                         var regex = new Regex("src\\s*=\\s*(?:\"(?<1>[^\"]*)\"|(?<1>\\S+))");
                         var images = regex.Matches(text).Cast<Match>()
@@ -206,6 +220,7 @@ namespace Hatena2Hugo
                                 }
 
                                 text = text.Replace(s, filename);
+                                image_count++;
                             }
                             catch
                             {
@@ -215,6 +230,8 @@ namespace Hatena2Hugo
                     }
 
                     File.WriteAllText(file, text);
+                    
+                    Console.WriteLine($"Resources are saved: {dir} , include { image_count } image(s)");
                 }
                 catch (Exception exception)
                 {
